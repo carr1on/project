@@ -21,21 +21,7 @@ const (
 
 type Service map[int]*any
 
-//var fu HiddenFunctions
-/*
-type HiddenFunctions interface {
-	ConnectionToHost(page string) (mmsked []*model.MMSData, err error)
-	ForCreatePlaceMMS(mmsked []*model.MMSData) (err error)
-	ReadOnServiceSMS(fullContent []byte) (err error)
-	ForPrintAll()
-}
-*/
-
-//type DataService map[int]*any
-
-//var ddb *DataService
-
-func (s *Service) ConnectionToHost(page string) (ar []any, err error) { //ar []any, err error) {
+func (s *Service) ConnectionToHost(page string) (ar []any, err error) {
 	resp, err := http.Get("http://" + Adr + ":" + ListenPort + page)
 	if err != nil {
 		log.Println("resp err")
@@ -54,7 +40,7 @@ func (s *Service) ConnectionToHost(page string) (ar []any, err error) { //ar []a
 			if err != nil {
 				log.Println("boddy err")
 			}
-			//todo если убрать код ниже до return функции  MMS, VoiceCall, CrushReport - "отстёгиваются"
+			// если убрать до return функции  MMS, VoiceCall, CrushReport - "отстёгиваются"
 			err = json.Unmarshal(body, &ar)
 			if err != nil {
 				log.Println("decoder err")
@@ -65,32 +51,6 @@ func (s *Service) ConnectionToHost(page string) (ar []any, err error) { //ar []a
 	}
 }
 
-/*
-	func (s *ServiceMMS) ForCreatePlaceMMS(mmsked []*model.MMSData) (err error) {
-		id := 1
-		for i := 0; i < len(mmsked); i++ {
-			for {
-				_, ok := (*s)[id]
-				if ok {
-					id++
-					continue
-				}
-				break
-			}
-			(*s)[id] = mmsked[i]
-		}
-		return nil
-
-}
-
-func (s *ServiceMMS) ForPrintAll() (mms *model.MMSData) {
-
-		for _, mms = range *s {
-			//	log.Println(mms)
-		}
-		return mms
-	}
-*/
 func NewSomeStorageMMS() *Service {
 	var service Service = make(map[int]*any)
 	return &service

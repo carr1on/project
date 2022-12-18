@@ -1,5 +1,11 @@
 package storage
 
+var CountyOnService = []string{"RU", "US", "GB", "FR", "BL", "AT", "BG", "DK", "CA", "ES", "CH", "TR", "PE", "NZ", "MC"}
+
+var ProviderVoiceCall = []string{"TransparentCalls", "E-Voice", "JustPhone", "JustPhone"}
+
+var EmailProvider = []string{"Gmail", "Yahoo", "Hotmail", "MSN", "Orange", "Comcast", "AOL", "Live", "RediffMail", "GMX", "Protomail", "Yandex", "Mail.ru"}
+
 type ISO3886 struct {
 	CountryName string `json:"country_name"`
 	Alpa2Code   string `json:"alpa_2_code"`

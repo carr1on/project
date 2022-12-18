@@ -3,20 +3,14 @@ package model
 type ServiceMMS map[int]MMSData
 type ServiceSMS map[int]*SMSData
 
-type ResultT struct {
-	Status bool       `json:"status"`
-	Data   ResultSetT `json:"data"`
-	Error  string     `json:"error,omitempty"`
-}
-
 type ResultSetT struct {
-	SMS       [][]SMSData              `json:"sms"`
-	MMS       [][]MMSData              `json:"mms"`
-	VoiceCall []VoiceCallData          `json:"voice_call"`
-	Email     map[string][][]EmailData `json:"email"`
-	Billing   BiliingData              `json:"billing"`
-	Suppurt   []int                    `json:"suppurt"`
-	Incidents []IncidentData           `json:"incidents"`
+	SMS       [][]SMSData            `json:"sms"`
+	MMS       [][]MMSData            `json:"mms"`
+	VoiceCall []VoiceCallData        `json:"voice_call"`
+	Email     map[string][]EmailData `json:"email"`
+	Billing   BiliingData            `json:"billing"`
+	Support   []string               `json:"suppurt"`
+	Incidents []IncidentData         `json:"incidents"`
 }
 
 type SMSData struct {

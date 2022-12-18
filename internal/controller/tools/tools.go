@@ -10,7 +10,7 @@ import (
 	"sort"
 )
 
-func SortByAlgorithmNarayana(ar []string) { //"ABC" sort
+func SortByAlgorithmABC(ar []string) { //"ABC" sort
 	sort.Slice(ar, func(i, j int) bool {
 		for k := 0; true; k++ {
 			if k == len(ar[i]) {

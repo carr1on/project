@@ -21,9 +21,12 @@ type Server struct {
 	Router *chi.Mux
 }
 
+var Resp model.ResultSetT
+
 func CreateNewServer() *Server {
 	s := &Server{}
 	s.Router = chi.NewRouter()
+
 	return s
 }
 
@@ -31,13 +34,13 @@ func (s *Server) MountHandlers() {
 	r := s.Router
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	//	r.Use(middleware.AllowContentType("application/json"))
+	r.Use(middleware.AllowContentType("application/json"))
 	r.Use(middleware.CleanPath)
 
 	r.Route("/", func(r chi.Router) {
 		r.Get("/", DefaultRoute)
 
-		// sub-route 'users'
+		// sub-route 'Statistic'
 		r.Route("/stat", func(r chi.Router) {
 			r.Get(config.PageSMS, CreateReportSMS)
 			r.Get(config.PageMMS, CreateReportMMS)
@@ -47,85 +50,23 @@ func (s *Server) MountHandlers() {
 			r.Get("/voice_call", CreateReportVoiceCall)
 			r.Get("/history_of_crush", CreateReportHistoryOfCrush)
 
-			/*				r.Put("/update", Put)
-							r.Post("/make_friend", MakeFriend)
-							r.Delete("/delete", DeleteUser)
-							r.Route("/this_user", func(r chi.Router) {
-							r.Get("/friends", GetFriends)
-			*/
 		})
 	})
 }
 
 func DefaultRoute(w http.ResponseWriter, _ *http.Request) {
-	if _, err := w.Write([]byte("SMS\n\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
+
 	CreateReportSMS(w, nil)
-	if _, err := w.Write([]byte("-------------------------------------\n----------------------------------\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-
-	//
-	if _, err := w.Write([]byte("Email\n\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
 	CreateReportEmail(w, nil)
-	if _, err := w.Write([]byte("\n---------------------------------------\n--------------------------------\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-
-	//
-	if _, err := w.Write([]byte("VoiceCall\n\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-	voiceString := "|Country|Bandwidth|ResponseTime|      Provider     |TTFB|VoicePurity|MediaOfCallsTime\n"
-	if _, err := w.Write([]byte(voiceString)); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
 	CreateReportVoiceCall(w, nil)
-
-	//
-	if _, err := w.Write([]byte("---------------------------------------\n--------------------------------\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-	if _, err := w.Write([]byte("Billing\n\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-	//
 	CreateReportBilling(w, nil)
-	if _, err := w.Write([]byte("---------------------------------------\n--------------------------------\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-	if _, err := w.Write([]byte("MMS\n\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
 	CreateReportMMS(w, nil)
-	if _, err := w.Write([]byte("\n---------------------------------------\n--------------------------------\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-	//
-	if _, err := w.Write([]byte("Support\n\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
 	CreateReportSupport(w, nil)
-	if _, err := w.Write([]byte("\n---------------------------------------\n--------------------------------\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-	//
-	if _, err := w.Write([]byte("HistoryOfCrush\n\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
 	CreateReportHistoryOfCrush(w, nil)
-	if _, err := w.Write([]byte("\n---------------------------------------\n--------------------------------\n")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
-	if _, err := w.Write([]byte("server alive")); err != nil {
-		log.Printf("[SERVER] can't send response: %v\n", err)
-	}
+
 }
 
-func ServiceSMS() (forWrite, forWriteByCountry, forWriteByProvider []byte, err error) {
+func ServiceSMS() (SMSbyCountry, SMSbyProvider []model.SMSData, err error) {
 	smsdata := "sms.data"
 
 	_, record, err := tools.OpenFile(smsdata)
@@ -133,34 +74,31 @@ func ServiceSMS() (forWrite, forWriteByCountry, forWriteByProvider []byte, err e
 		fmt.Println(err)
 	}
 
-	forWrite, contentText, err := sortedSMS(record)
+	contentText, err := sortedSMSFirstStep(record)
 	if err != nil {
-		log.Println("err")
+		log.Println("err on First Step Sort SMS")
 	}
 
-	forWriteByCountry, err = sortedSMSbyCountry(contentText)
+	SMSbyCountry, err = sortedSMSbyCountry(contentText)
 	if err != nil {
-		log.Println("err")
+		log.Println("err on Country Step Sort SMS")
 	}
-	forWriteByProvider, err = sortedSMSbyProvider(contentText)
+	SMSbyProvider, err = sortedSMSbyProvider(contentText)
 	if err != nil {
-		log.Println("err")
+		log.Println("err on Provider Step Sort SMS")
 	}
 
-	return forWrite, forWriteByCountry, forWriteByProvider, nil
+	return SMSbyCountry, SMSbyProvider, nil
 }
 
-func sortedSMS(fullContent [][]string) (forWrite []byte, ContentText string, err error) {
+func sortedSMSFirstStep(fullContent [][]string) (ContentText string, err error) {
 	for i := range fullContent {
 		smsslice := fullContent[i]
 
 		if len(smsslice) == 4 {
 			if smsslice[3] == "Topolo" || smsslice[3] == "Rond" || smsslice[3] == "Kildy" {
-
 				forWriteString := smsslice[0] + " " + smsslice[1] + " " + smsslice[2] + " " + smsslice[3] + "\n"
 				ContentText += forWriteString
-
-				forWrite = []byte(ContentText)
 			} else {
 				break
 			}
@@ -168,19 +106,20 @@ func sortedSMS(fullContent [][]string) (forWrite []byte, ContentText string, err
 			smsslice = nil
 		}
 	}
-	return forWrite, ContentText, nil
+	return ContentText, nil
 }
 
-func sortedSMSbyCountry(ContentText string) (forWrite []byte, err error) {
+func sortedSMSbyCountry(ContentText string) (allSMS []model.SMSData, err error) {
 	var (
 		temp    string
 		country []storage.ISO3886
+		oneSMS  model.SMSData
 	)
 
 	country = storage.Countres
 	spltn := strings.SplitN(ContentText, "\n", -1)
 
-	tools.SortByAlgorithmNarayana(spltn)
+	tools.SortByAlgorithmABC(spltn)
 
 	for i := range spltn {
 		spltn1 := strings.SplitN(spltn[i], " ", -1)
@@ -196,7 +135,11 @@ func sortedSMSbyCountry(ContentText string) (forWrite []byte, err error) {
 					forWriteString := smsslice[0] + " " + smsslice[1] + " " + smsslice[2] + " " + smsslice[3] + "\n"
 					temp += forWriteString
 
-					forWrite = []byte(temp)
+					oneSMS.Country = smsslice[0]
+					oneSMS.Bandwidth = smsslice[1]
+					oneSMS.ResponseTime = smsslice[2]
+					oneSMS.Provider = smsslice[3]
+					allSMS = append(allSMS, oneSMS)
 				}
 			}
 		} else {
@@ -204,17 +147,20 @@ func sortedSMSbyCountry(ContentText string) (forWrite []byte, err error) {
 		}
 	}
 
-	return forWrite, nil
+	return allSMS, nil
 }
 
-func sortedSMSbyProvider(ContentText string) (forWrite []byte, err error) {
-	var temp string
+func sortedSMSbyProvider(ContentText string) (allSMS []model.SMSData, err error) {
+	var (
+		temp   string
+		oneSMS model.SMSData
+	)
 
 	ContentText, _ = ColumnsForServiceSMS(ContentText)
 
 	spltn := strings.SplitN(ContentText, "\n", -1)
 
-	tools.SortByAlgorithmNarayana(spltn)
+	tools.SortByAlgorithmABC(spltn)
 
 	for i := range spltn {
 		spltn1 := strings.SplitN(spltn[i], " ", -1)
@@ -222,19 +168,24 @@ func sortedSMSbyProvider(ContentText string) (forWrite []byte, err error) {
 		smsslice := spltn1
 		if len(smsslice) == 4 {
 
-			forWriteString := "Provider: " + smsslice[0] + " " + smsslice[1] + " " + smsslice[2] + " " + smsslice[3] + "\n"
+			forWriteString := smsslice[0] + " " + smsslice[1] + " " + smsslice[2] + " " + smsslice[3] + "\n"
 			temp += forWriteString
 
-			forWrite = []byte(temp)
+			oneSMS.Country = smsslice[1]
+			oneSMS.Bandwidth = smsslice[2]
+			oneSMS.ResponseTime = smsslice[3]
+			oneSMS.Provider = smsslice[0]
+			allSMS = append(allSMS, oneSMS)
 
 		} else {
 			smsslice = nil
 		}
 	}
 
-	return forWrite, nil
+	return allSMS, nil
 }
 
+// ColumnsForServiceSMS используется для смены очерёдности колонок. Упрощает сортировку.
 func ColumnsForServiceSMS(ContentTextIn string) (ContentTextOut string, err error) {
 	spltn := strings.SplitN(ContentTextIn, "\n", -1)
 	for i := range spltn {
@@ -255,50 +206,31 @@ func ColumnsForServiceSMS(ContentTextIn string) (ContentTextOut string, err erro
 
 func CreateReportSMS(w http.ResponseWriter, _ *http.Request) {
 
-	_, forWriteByCountry, forWriteByProvider, err := ServiceSMS()
+	SMSbyCountry, SMSbyProvider, err := ServiceSMS()
 
-	if err != nil {
-		log.Printf("err ServiceSMS")
-	}
-
-	w.WriteHeader(http.StatusOK)
-
-	/*
-		if _, err = w.Write(forWrite); err != nil {
-			log.Printf("err write")
-		}
-	*/
-	if _, err = w.Write(forWriteByCountry); err != nil {
+	dataCountry, _ := json.Marshal(SMSbyCountry)
+	if _, err = w.Write(dataCountry); err != nil {
 		log.Printf("err write by Country")
 	}
 
-	if _, err = w.Write([]byte("\n--------\n")); err != nil {
-		log.Printf("err write")
-	}
-	if _, err = w.Write(forWriteByProvider); err != nil {
-		log.Printf("err write by Provider")
+	json.Unmarshal(dataCountry, &Resp.SMS)
+	dataPrrovider, _ := json.Marshal(SMSbyProvider)
+	if _, err = w.Write(dataPrrovider); err != nil {
+		log.Printf("err write by Country")
 	}
 
-	/*var smsData []*model.SMSData
-	err = json.Unmarshal(forWrite, &smsData)
-	if err != nil {
-		log.Println("json Unmarshal err")
-		return
-	}*/
-	//	w.WriteHeader(http.StatusOK)
-	//	sendResponse(w, http.StatusOK, forWrite, nil) // u, nil)
+	json.Unmarshal(dataCountry, &Resp.SMS)
+	w.WriteHeader(http.StatusOK)
 }
 
-func sortedEmail(fullContent [][]string) ([]byte, []byte, []byte, error) {
+func sortedEmail(fullContent [][]string) (forWrite, jsonDataLow, jsonDataHigh []byte, err error) {
 	var (
-		eData                               model.EmailData
-		eDataStore, eDataStoreForWrite      []model.EmailData
-		forWrite, jsonDataLow, jsonDataHigh []byte
-		err                                 error
+		eData                          model.EmailData
+		eDataStore, eDataStoreForWrite []model.EmailData
 	)
 
-	County := []string{"RU", "US", "GB", "FR", "BL", "AT", "BG", "DK", "CA", "ES", "CH", "TR", "PE", "NZ", "MC"}
-	Provider := []string{"Gmail", "Yahoo", "Hotmail", "MSN", "Orange", "Comcast", "AOL", "Live", "RediffMail", "GMX", "Protomail", "Yandex", "Mail.ru"}
+	County := storage.CountyOnService
+	Provider := storage.EmailProvider
 
 	for k := range fullContent {
 		emailslice := fullContent[k]
@@ -348,11 +280,9 @@ func sortedEmail(fullContent [][]string) ([]byte, []byte, []byte, error) {
 	}
 	return forWrite, jsonDataLow, jsonDataHigh, nil
 
-	//}
-	//return nil, nil, nil, err
 }
 
-func ServiceEmail() (forWriteAll, forWriteLow, forWriteHigh []byte, err error) {
+func ServiceEmail() (eData, eDataLow, eDataHigh []model.EmailData, err error) {
 	emaildata := "email.data"
 
 	_, record, err := tools.OpenFile(emaildata)
@@ -360,57 +290,54 @@ func ServiceEmail() (forWriteAll, forWriteLow, forWriteHigh []byte, err error) {
 		fmt.Println(err)
 	}
 
-	forWriteAll, forWriteLow, forWriteHigh, err = sortedEmail(record)
+	forWriteAll, forWriteLow, forWriteHigh, err := sortedEmail(record)
 	if err != nil {
 		log.Println("err")
 	}
 
-	return forWriteAll, forWriteLow, forWriteHigh, nil
+	err = json.Unmarshal(forWriteAll, &eData)
+	if err != nil {
+		log.Println("json Unmarshal err")
+		return
+	}
+
+	err = json.Unmarshal(forWriteLow, &eDataLow)
+	if err != nil {
+		log.Println("json Unmarshal err")
+		return
+	}
+
+	err = json.Unmarshal(forWriteHigh, &eDataHigh)
+	if err != nil {
+		log.Println("json Unmarshal err")
+		return
+	}
+
+	return eData, eDataLow, eDataHigh, nil
 }
 
 func CreateReportEmail(w http.ResponseWriter, _ *http.Request) {
 
-	forWrite, forWriteLow, forWriteHigh, err := ServiceEmail()
+	eData, eDataLow, eDataHigh, err := ServiceEmail()
 
-	if err != nil {
-		log.Printf("err ServiceSMS")
+	Resp.Email["LOW PING ON EMAIL SERVICE"] = eDataLow
+	Resp.Email["HiGH PING ON EMAIL SERVICE"] = eDataHigh
+	Resp.Email["ALL RESPONSE ON EMAIL SERVICE"] = eData
+
+	dataCountry, _ := json.Marshal(Resp.Email)
+	if _, err = w.Write(dataCountry); err != nil {
+		log.Printf("err write by Email Service")
 	}
 
 	w.WriteHeader(http.StatusOK)
-
-	if _, err = w.Write([]byte("\n-low Ping----\n")); err != nil {
-		log.Printf("err write")
-	}
-
-	if _, err = w.Write(forWriteLow); err != nil {
-		log.Printf("err write")
-	}
-	if _, err = w.Write([]byte("\n-high ping----\n")); err != nil {
-		log.Printf("err write")
-	}
-
-	if _, err = w.Write(forWriteHigh); err != nil {
-		log.Printf("err write")
-	}
-
-	if _, err = w.Write([]byte("\n-All----\n")); err != nil {
-		log.Printf("err write")
-	}
-	if _, err = w.Write(forWrite); err != nil {
-		log.Printf("err write")
-	}
-
 }
 
-func sortedVoiceCall(fullContent [][]string) ([]byte, error) {
+func sortedVoiceCall(fullContent [][]string) (voiceCall []model.VoiceCallData, err error) {
 	var (
-		temp     string
-		forWrite []byte
-		err      error
+		vCall    model.VoiceCallData
+		County   = storage.CountyOnService
+		Provider = storage.ProviderVoiceCall
 	)
-
-	County := []string{"RU", "US", "GB", "FR", "BL", "AT", "BG", "DK", "CA", "ES", "CH", "TR", "PE", "NZ", "MC"}
-	Provider := []string{"  TransparentCalls   ", "      E-Voice       ", "     JustPhone      ", "JustPhone"}
 
 	for k := range fullContent {
 		VCSlc := fullContent[k]
@@ -420,20 +347,26 @@ func sortedVoiceCall(fullContent [][]string) ([]byte, error) {
 			for i := 0; i < len(County); i++ {
 				for j := 0; j < len(Provider); j++ {
 
-					if VCSlc[3] == "E-Voice" {
-						VCSlc[3] = "      E-Voice       "
-					} else if VCSlc[3] == "JustPhone" {
-						VCSlc[3] = "     JustPhone      "
-					} else if VCSlc[3] == "TransparentCalls" {
-						VCSlc[3] = "  TransparentCalls   "
-					}
 					if VCSlc[0] == County[i] {
 						if VCSlc[3] == Provider[j] {
 
-							forWriteString := VCSlc[0] + " " + VCSlc[1] + " " + VCSlc[2] + " " + VCSlc[3] + " " + VCSlc[4] + VCSlc[5] + " " + VCSlc[6] + VCSlc[7] + " " + "\n"
-							temp += forWriteString
+							vCall.Country = VCSlc[0]
+							vCall.ResponseTime = VCSlc[1]
+							vCall.Bandwidth = VCSlc[2]
+							vCall.Provider = VCSlc[3]
 
-							forWrite = []byte(temp)
+							if temp, err := strconv.ParseFloat(VCSlc[4], 32); err == nil {
+								vCall.ConnectionStability = float32(temp)
+							}
+
+							vCall.TTFB, err = strconv.Atoi(VCSlc[5])
+							vCall.VoicePurity, err = strconv.Atoi(VCSlc[6])
+							vCall.MediaOfCallsTime, err = strconv.Atoi(VCSlc[7])
+							if err != nil {
+								log.Print("err in convert strings to value for Voice Call")
+							}
+
+							voiceCall = append(voiceCall, vCall)
 						}
 					}
 				}
@@ -443,14 +376,11 @@ func sortedVoiceCall(fullContent [][]string) ([]byte, error) {
 		}
 	}
 
-	//	slice = nil
-	//return nil, err
-
-	return forWrite, nil
+	return voiceCall, nil
 
 }
 
-func ServiceVoiceCall() (forWrite []byte, err error) {
+func ServiceVoiceCall() (voiceCall []model.VoiceCallData, err error) {
 	voicedata := "voice.data"
 
 	_, record, err := tools.OpenFile(voicedata)
@@ -458,12 +388,12 @@ func ServiceVoiceCall() (forWrite []byte, err error) {
 		fmt.Println(err)
 	}
 
-	forWrite, err = sortedVoiceCall(record)
+	voiceCall, err = sortedVoiceCall(record)
 	if err != nil {
 		log.Println("err")
 	}
 
-	return forWrite, nil
+	return voiceCall, nil
 }
 
 func CreateReportVoiceCall(w http.ResponseWriter, _ *http.Request) {
@@ -476,33 +406,35 @@ func CreateReportVoiceCall(w http.ResponseWriter, _ *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 
-	if _, err = w.Write(forWrite); err != nil {
+	jsonData, err := json.Marshal(forWrite)
+	if err != nil {
+		log.Printf("err in json marshal on Voice Call ")
+	}
+	json.Unmarshal(jsonData, &Resp.VoiceCall)
+	if _, err = w.Write(jsonData); err != nil {
 		log.Printf("err write")
 	}
 
-	//sendResponseSlice(w, http.StatusOK, _, nil) // u, nil)
 }
 
 // billing
 
 func CreateReportBilling(w http.ResponseWriter, _ *http.Request) {
-
-	forWrite, err := Billing()
+	forWrite, billingData, err := Billing()
 
 	if err != nil {
 		log.Printf("err ServiceBilling")
 	}
-
+	Resp.Billing = billingData
 	w.WriteHeader(http.StatusOK)
 
 	if _, err = w.Write(forWrite); err != nil {
 		log.Printf("err write")
 	}
 
-	//sendResponseSlice(w, http.StatusOK, _, nil) // u, nil)
 }
 
-func Billing() (forWrite []byte, err error) {
+func Billing() (forWrite []byte, billingData model.BiliingData, err error) {
 
 	billingdata := "billing.data"
 
@@ -525,70 +457,71 @@ func Billing() (forWrite []byte, err error) {
 	if err != nil {
 		fmt.Println("err ParseInt")
 	}
-	var sliceforsep []int
-	var sliceforsep1 []int
+	var sliceForSepPrimary []int
+	var sliceForSep_Secondary []int
 	for i := 0; i < len(fullContent); i++ {
 
-		sliceforsep = (append(sliceforsep, i+1))
+		sliceForSepPrimary = append(sliceForSepPrimary, i+1)
 		if fullContent[i] == 49 {
-			sliceforsep1 = (append(sliceforsep1, 1))
+			sliceForSep_Secondary = append(sliceForSep_Secondary, 1)
 		} else if fullContent[i] == 48 {
-			sliceforsep1 = (append(sliceforsep1, 0))
+			sliceForSep_Secondary = append(sliceForSep_Secondary, 0)
 		}
 
 	}
 	var slicestring []bool
-	for i := 0; i < len(sliceforsep1); i++ {
+	for i := 0; i < len(sliceForSep_Secondary); i++ {
 
-		if sliceforsep1[i] == 1 {
+		if sliceForSep_Secondary[i] == 1 {
 			slicestring = append(slicestring, true)
 		} else {
 			slicestring = append(slicestring, false)
 		}
 	}
 
-	var d model.BiliingData
-	d.CreateCustomer = slicestring[0]
-	d.Purchase = slicestring[1]
-	d.Payout = slicestring[2]
-	d.Recurring = slicestring[3]
-	d.FraudControl = slicestring[4]
-	d.CheckoutPage = slicestring[5]
+	billingData.CreateCustomer = slicestring[0]
+	billingData.Purchase = slicestring[1]
+	billingData.Payout = slicestring[2]
+	billingData.Recurring = slicestring[3]
+	billingData.FraudControl = slicestring[4]
+	billingData.CheckoutPage = slicestring[5]
 
-	var stringgForPrint []string
-	var count, amount int
-	if d.CreateCustomer == true {
-		stringgForPrint = append(stringgForPrint, "CreateCustomer")
+	var (
+		stringsForPrint []string
+		count, amount   int
+	)
+	if billingData.CreateCustomer == true {
+		stringsForPrint = append(stringsForPrint, "CreateCustomer")
 		amount++
 	} else {
 		count++
 	}
-	if d.Purchase == true {
-		stringgForPrint = append(stringgForPrint, "Purchase")
+	if billingData.Purchase == true {
+		stringsForPrint = append(stringsForPrint, "Purchase")
 		amount++
 	} else {
 		count++
 	}
-	if d.Payout == true {
-		stringgForPrint = append(stringgForPrint, "Payout")
+	if billingData.Payout == true {
+		stringsForPrint = append(stringsForPrint, "Payout")
 		amount++
 	} else {
 		count++
 	}
-	if d.Recurring == true {
-		stringgForPrint = append(stringgForPrint, "Recurring")
+	if billingData.Recurring == true {
+		stringsForPrint = append(stringsForPrint, "Recurring")
 		amount++
 	} else {
 		count++
 	}
-	if d.FraudControl == true {
-		stringgForPrint = append(stringgForPrint, "FraudControl")
+	if billingData.FraudControl == true {
+		stringsForPrint = append(stringsForPrint, "FraudControl")
 		amount++
 	} else {
 		count++
 	}
-	if d.CheckoutPage == true {
-		stringgForPrint = append(stringgForPrint, "CheckoutPage")
+	if billingData.CheckoutPage == true {
+		stringsForPrint = append(stringsForPrint, "CheckoutPage")
 		amount++
 	} else {
 		count++
@@ -598,176 +531,146 @@ func Billing() (forWrite []byte, err error) {
 
 	var output string
 	if count == 0 {
-		output = fmt.Sprintf("%s %s, должны значения True\n", mask, stringgForPrint)
+		output = fmt.Sprintf("%s %s, должны значения True\n", mask, stringsForPrint)
 	} else {
 		if amount == 0 {
 			output = fmt.Sprintf("%s Все значения False", mask)
 		} else if amount == 1 {
-			output = fmt.Sprintf("%s %s, должно быть True\n Остальное False", mask, stringgForPrint)
+			output = fmt.Sprintf("%s %s, должно быть True\n Остальное False", mask, stringsForPrint)
 		} else if count > 0 {
-			output = fmt.Sprintf("%s, %s, должны быть True\n Остальное False", mask, stringgForPrint)
+			output = fmt.Sprintf("%s, %s, должны быть True\n Остальное False", mask, stringsForPrint)
 		}
 	}
-	//	log.Println(output)
 
 	temp := output + "\n "
 	forWrite = []byte(temp)
-	return forWrite, nil
+	return forWrite, billingData, nil
 }
 
-// http request
-
-type ServiceMMS map[int]*model.MMSData
-
+// out http requests
 var store *config.Service
 
-func init1() {
+func init() {
 	//TODO
+	Resp.Email = make(map[string][]model.EmailData)
 	store = config.NewSomeStorageMMS()
 }
 
 func CreateReportMMS(w http.ResponseWriter, _ *http.Request) {
-	page := config.PageMMS
-	init1()
-	//var mmsked []model.MMSData
-	mmsked, err := store.ConnectionToHost(page)
+
+	var (
+		page      = config.PageMMS
+		sortedMMS []model.MMSData
+	)
+
+	AllMMS, err := store.ConnectionToHost(page)
 	if err != nil {
 		log.Println("err connectionToHost")
 	}
-
-	jsonData, err := json.Marshal(mmsked)
+	jsonData, err := json.Marshal(AllMMS)
 	if err != nil {
 		log.Printf("[SERVER] can't prepare response: %v\n", err)
 		return
 	}
-
-	var (
-		byProvider, byCountry []byte
-		mms                   []model.MMSData
-	)
-	err = json.Unmarshal(jsonData, &mms)
+	err = json.Unmarshal(jsonData, &sortedMMS)
 	if err != nil {
 		log.Println("json Unmarshal err")
 		return
 	}
 
-	if len(mms) != 0 {
-		_, byProvider, byCountry, err = sortedMMSbyCountry(mms)
+	if len(sortedMMS) != 0 {
+		byCountry, byProvider, err := sortedMMSbyCountry(sortedMMS)
 		if err != nil {
 			log.Println("err in sort func")
 		}
 
-		//todo если убрать объединение срезов выводится только 1 вариант
-		for i := range byProvider {
-			byCountry = append(byCountry, byProvider[i])
+		jsonDataP, err := json.Marshal(byProvider)
+		if _, err = w.Write(jsonDataP); err != nil {
+			log.Printf("err write by Country")
 		}
+		json.Unmarshal(jsonDataP, &Resp.MMS)
 
-		//todo если оставить незакоментированными строки ниже:  "json Unmarshal err"
-		//todo  выводит вариант 1
-		/*err = json.Unmarshal(byCountry, &mms)
-		if err != nil {
-			log.Println("json Unmarshal err")
-			return
-		}*/
-		//todo вариант 2
-		/*err = json.Unmarshal(byProvider, &mms)
-		if err != nil {
-			log.Println("json Unmarshal err")
-			return
-		}*/
-
-		sendResponse(w, http.StatusOK, string(byCountry), nil) //todo при выводе тут было "...(w, http.StatusOK, mms).."
+		jsonDataC, err := json.Marshal(byCountry)
+		if _, err = w.Write(jsonDataC); err != nil {
+			log.Printf("err write by Country")
+		}
+		json.Unmarshal(jsonDataC, &Resp.MMS)
 		w.WriteHeader(http.StatusOK)
+
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
-		sendResponse(w, http.StatusInternalServerError, mms, nil)
 	}
 }
 
-func sortedMMSbyCountry(mms []model.MMSData) ([]byte, []byte, []byte, error) {
-	var temp string
-	var mmsked model.MMSData
-	var mmsTmp []model.MMSData
-	var forWrite, jsonCountry, jsonProvider []byte
-	var err error
-
+func sortedMMSbyCountry(mms []model.MMSData) (mmsCountry, mmProvider []model.MMSData, err error) {
+	var (
+		temp   string
+		mmsked model.MMSData
+		mmsTmp []model.MMSData
+	)
 	var country []storage.ISO3886
 	country = storage.Countres
 
 	for i := range mms {
-
 		temp += mms[i].Country + " " + mms[i].Bandwidth + " " + mms[i].ResponseTime + " " + mms[i].Provider + "\n"
 	}
 	spltn := strings.SplitN(temp, "\n", -1)
-	tools.SortByAlgorithmNarayana(spltn)
+	tools.SortByAlgorithmABC(spltn)
 
 	for i := range spltn {
 		spltn1 := strings.SplitN(spltn[i], " ", -1)
-
 		smsslice := spltn1
 
 		if len(smsslice) == 4 {
-
-			for l, _ := range country {
+			for l := range country {
 				comparison := strings.Compare(country[l].Alpa2Code, smsslice[0])
 				if comparison == 0 {
-					smsslice[0] = "(" + smsslice[0] + ") " + country[l].CountryName
-
-					forWriteString := smsslice[0] + " " + smsslice[1] + " " + smsslice[2] + " " + smsslice[3] + "\n"
+					smsslice[0] = country[l].CountryName + "(" + smsslice[0] + ") "
 
 					mmsked.Country = smsslice[0]
 					mmsked.Provider = smsslice[3]
 					mmsked.Bandwidth = smsslice[1]
 					mmsked.ResponseTime = smsslice[2]
 					mmsTmp = append(mmsTmp, mmsked)
-
-					temp += forWriteString
-
-					forWrite = []byte(temp)
-
 				}
 			}
 
 		}
 	}
+	mms = nil
 
-	forWrite, err = json.Marshal(mms)
-	if err != nil {
-		log.Printf("Marshal err in Sorted Email")
-	}
 	sort.Slice(mmsTmp, func(i, j int) bool { return mmsTmp[i].Provider < mmsTmp[j].Provider })
-
-	jsonProvider, err = json.Marshal(mmsTmp)
+	_, err = json.Marshal(mmsTmp)
 	if err != nil {
 		log.Printf("Marshal err in Sorted Email")
 	}
+	mmsCountry = mmsTmp
+
 	sort.Slice(mmsTmp, func(i, j int) bool { return mmsTmp[i].Country < mmsTmp[j].Country })
-
-	jsonCountry, err = json.Marshal(mmsTmp)
+	_, err = json.Marshal(mmsTmp)
 	if err != nil {
 		log.Printf("Marshal err in Sorted Email")
 	}
+	mmProvider = mmsTmp
 
-	return forWrite, jsonCountry, jsonProvider, nil
+	return mmsCountry, mmProvider, nil
 }
 
 func CreateReportSupport(w http.ResponseWriter, _ *http.Request) {
 	page := config.PageSupport
-	init1()
 
-	mmsked, err := store.ConnectionToHost(page)
+	AllRead, err := store.ConnectionToHost(page)
 	if err != nil {
 		log.Println("err connectionToHost")
 	}
 
-	jsonData, err := json.Marshal(mmsked)
-
+	jsonData, err := json.Marshal(AllRead)
 	if err != nil {
 		log.Printf("[SERVER] can't prepare response: %v\n", err)
 		return
 	}
 
-	var support []*model.SupportData
+	var support []model.SupportData
 	err = json.Unmarshal(jsonData, &support)
 	if err != nil {
 		log.Println("json Unmarshal err")
@@ -776,7 +679,6 @@ func CreateReportSupport(w http.ResponseWriter, _ *http.Request) {
 
 	if len(support) != 0 {
 		w.WriteHeader(http.StatusOK)
-		sendResponse(w, http.StatusOK, support, nil)
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
 		sendResponse(w, http.StatusInternalServerError, support, nil)
@@ -784,68 +686,75 @@ func CreateReportSupport(w http.ResponseWriter, _ *http.Request) {
 
 	TicketsInt := ActiveTickets(support)
 	if TicketsInt != 0 {
-		tmp := SupportTimeTickets(TicketsInt)
-		if _, err = w.Write([]byte("\n" + tmp + "\n")); err != nil {
+		forWrite := SupportTimeTickets(TicketsInt)
+
+		dataSupport, err := json.Marshal(forWrite)
+		if _, err = w.Write(dataSupport); err != nil {
+			log.Printf("err write by Country")
+		}
+
+		json.Unmarshal(dataSupport, Resp.Support)
+
+		if _, err = w.Write([]byte(dataSupport)); err != nil {
 			log.Printf("err write")
 			return
 		}
 	}
 }
 
-func ActiveTickets(all []*model.SupportData) (mmskedInt int) {
+func ActiveTickets(all []model.SupportData) (ticketsValue int) {
 
 	for _, j := range all {
 
 		i := j.ActiveTickets
-		mmskedInt += i
+		ticketsValue += i
 	}
-	return mmskedInt
+	return ticketsValue
 }
 
 func SupportTimeTickets(allInt int) (timeForAccept string) {
 
 	var (
-		base               float32 = 18
-		timeHourPerTickets         = 60
-		percentHundred     float32 = 100
-		percentRequired    float32
-		degreeStatus       string
+		baseTicketInHour float32 = 18
+		timePerBase              = 60
+		percentHundred   float32 = 100
+		percentRequired  float32
+		degreeStatus     string
 	)
 
-	someInteger := float32(allInt) - base
-	//someInteger := 32 - base
+	someInteger := float32(allInt) - baseTicketInHour
+	//someInteger := 32 - baseTicketInHour //изначально тестировалось на тикетах = 32
 
 	if int(someInteger) < 9 {
-		degreeStatus = fmt.Sprintf("\nlevel.1\n")
+		degreeStatus = fmt.Sprintf("level.1")
 	} else if 9 <= int(someInteger) && int(someInteger) < 16 {
-		degreeStatus = fmt.Sprintf("\nlevel.2\n")
+		degreeStatus = fmt.Sprintf("level.2")
 	} else if 16 <= int(someInteger) {
-		degreeStatus = fmt.Sprintf("\nlevel.3\n")
+		degreeStatus = fmt.Sprintf("level.3")
 	}
 
-	percentOne := base / percentHundred
+	percentOne := baseTicketInHour / percentHundred
 
-	for someInteger < base {
-		base = base - percentOne
+	for someInteger < baseTicketInHour {
+		baseTicketInHour = baseTicketInHour - percentOne
 		percentRequired++
 
-		if someInteger == base {
+		if someInteger == baseTicketInHour {
 			break
-		} else if someInteger > base {
+		} else if someInteger > baseTicketInHour {
 			break
 		}
 	}
 
 	percentRequired = percentHundred - percentRequired
-	timeToAccept := float32(timeHourPerTickets) * (percentRequired / 100)
+	timeToAccept := float32(timePerBase) * (percentRequired / 100)
 	if timeToAccept == 60 {
 		timeForAccept = fmt.Sprintf("%s время ожидания до ответа на новый запрос в Support более %d минут", degreeStatus, int(timeToAccept))
-		//fmt.Println(timeForAccept)
+
 		return timeForAccept
 	}
 
 	timeForAccept = fmt.Sprintf("%s время ожидания до ответа на новый запрос в Support: %d минут", degreeStatus, int(timeToAccept))
-	//fmt.Println(timeForAccept)
 	return timeForAccept
 }
 
@@ -862,7 +771,6 @@ func CreateReportHistoryOfCrush(w http.ResponseWriter, _ *http.Request) {
 		log.Printf("[SERVER] can't prepare response: %v\n", err)
 		return
 	}
-
 	var historyOfCrush []*model.IncidentData
 	err = json.Unmarshal(jsonData, &historyOfCrush)
 	if err != nil {
@@ -871,13 +779,27 @@ func CreateReportHistoryOfCrush(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	if len(historyOfCrush) != 0 {
+		sort.Slice(historyOfCrush, func(i, j int) bool { return historyOfCrush[i].Status < historyOfCrush[j].Status })
+
 		w.WriteHeader(http.StatusOK)
-		sendResponse(w, http.StatusOK, historyOfCrush, nil)
+
+		jsonData, err := json.Marshal(historyOfCrush)
+		if err != nil {
+			log.Print("err in history of crush")
+		}
+		json.Unmarshal(jsonData, &Resp.Incidents)
+		//sendResponse(w, http.StatusOK, historyOfCrush, nil)
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
 		sendResponse(w, http.StatusInternalServerError, historyOfCrush, nil)
 	}
 
+}
+
+type ResultT struct {
+	Status bool             `json:"status"`
+	Data   model.ResultSetT `json:"data"`
+	Error  error            `json:"error,omitempty"`
 }
 
 type UserResponse struct {
