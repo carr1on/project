@@ -32,9 +32,9 @@ func CreateNewServer() *Server {
 
 func (s *Server) MountHandlers() {
 	r := s.Router
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.AllowContentType("application/json"))
+	//	r.Use(middleware.Logger)
+	//	r.Use(middleware.Recoverer)
+	//	r.Use(middleware.AllowContentType("application/json"))
 	r.Use(middleware.CleanPath)
 
 	r.Route("/", func(r chi.Router) {

@@ -11,6 +11,8 @@ type ISO3886 struct {
 	Alpa2Code   string `json:"alpa_2_code"`
 }
 
+var ListenPort string
+
 var Countres = []ISO3886{
 	{"Australia", "AU"}, {"Austria", "AT"},
 	{"Azerbaijan", "AZ"}, {"Albania", "AL"},

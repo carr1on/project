@@ -1,8 +1,7 @@
 package config
 
-//package main
-
 import (
+	"Statistic/internal/storage"
 	"encoding/json"
 	"io"
 	"log"
@@ -22,7 +21,7 @@ const (
 type Service map[int]*any
 
 func (s *Service) ConnectionToHost(page string) (ar []any, err error) {
-	resp, err := http.Get("http://" + Adr + ":" + ListenPort + page)
+	resp, err := http.Get("http://" + Adr + ":" + storage.ListenPort + page)
 	if err != nil {
 		log.Println("resp err")
 	}

@@ -2,7 +2,7 @@ package main
 
 import (
 	"Statistic/internal/controller"
-	"Statistic/internal/controller/app"
+	App "Statistic/internal/controller/app"
 	"log"
 	"os"
 	"os/signal"
@@ -17,7 +17,7 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	app.App(s, &wg, &sig)
+	App.GUIapp(s, &wg, sig)
 
 	wg.Wait()
 	log.Print("we have a way out")
